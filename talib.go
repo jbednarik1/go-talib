@@ -6,7 +6,10 @@ Licensed under terms of MIT license (see LICENSE)
 // Package talib is a pure Go port of TA-Lib (http://ta-lib.org) Technical Analysis Library
 package talib
 
-import "math"
+import (
+	"fmt"
+	"math"
+)
 
 // MaType - Moving average type
 type MaType int
@@ -33,11 +36,13 @@ const (
 
 // BBands - Bollinger Bands
 // upperband, middleband, lowerband = BBands(close, timeperiod=5, nbdevup=2, nbdevdn=2, matype=0)
-func BBands(inReal []float64, inTimePeriod int, inNbDevUp float64, inNbDevDn float64, inMAType MaType) ([]float64, []float64, []float64) {
+func BBands(inReal []float64, inTimePeriod int, inNbDevUp float64, inNbDevDn float64, inMAType MaType, out *BBAndsOut) {
 
-	outRealUpperBand := make([]float64, len(inReal))
-	outRealMiddleBand := Ma(inReal, inTimePeriod, inMAType)
-	outRealLowerBand := make([]float64, len(inReal))
+	//Upper := make([]float64, len(inReal))
+	//Middle := Ma(inReal, inTimePeriod, inMAType)
+	//outRealLowerBand := make([]float64, len(inReal))
+
+	Ma(inReal, inTimePeriod, inMAType, out.Middle)
 
 	tempBuffer2 := StdDev(inReal, inTimePeriod, 1.0)
 
@@ -46,61 +51,61 @@ func BBands(inReal []float64, inTimePeriod int, inNbDevUp float64, inNbDevDn flo
 		if inNbDevUp == 1.0 {
 			for i := 0; i < len(inReal); i++ {
 				tempReal := tempBuffer2[i]
-				tempReal2 := outRealMiddleBand[i]
-				outRealUpperBand[i] = tempReal2 + tempReal
-				outRealLowerBand[i] = tempReal2 - tempReal
+				tempReal2 := out.Middle[i]
+				out.Upper[i] = tempReal2 + tempReal
+				out.Lower[i] = tempReal2 - tempReal
 			}
 		} else {
 			for i := 0; i < len(inReal); i++ {
 				tempReal := tempBuffer2[i] * inNbDevUp
-				tempReal2 := outRealMiddleBand[i]
-				outRealUpperBand[i] = tempReal2 + tempReal
-				outRealLowerBand[i] = tempReal2 - tempReal
+				tempReal2 := out.Middle[i]
+				out.Upper[i] = tempReal2 + tempReal
+				out.Lower[i] = tempReal2 - tempReal
 			}
 		}
 	} else if inNbDevUp == 1.0 {
 		for i := 0; i < len(inReal); i++ {
 			tempReal := tempBuffer2[i]
-			tempReal2 := outRealMiddleBand[i]
-			outRealUpperBand[i] = tempReal2 + tempReal
-			outRealLowerBand[i] = tempReal2 - (tempReal * inNbDevDn)
+			tempReal2 := out.Middle[i]
+			out.Upper[i] = tempReal2 + tempReal
+			out.Lower[i] = tempReal2 - (tempReal * inNbDevDn)
 		}
 	} else if inNbDevDn == 1.0 {
 		for i := 0; i < len(inReal); i++ {
 			tempReal := tempBuffer2[i]
-			tempReal2 := outRealMiddleBand[i]
-			outRealLowerBand[i] = tempReal2 - tempReal
-			outRealUpperBand[i] = tempReal2 + (tempReal * inNbDevUp)
+			tempReal2 := out.Middle[i]
+			out.Lower[i] = tempReal2 - tempReal
+			out.Upper[i] = tempReal2 + (tempReal * inNbDevUp)
 		}
 	} else {
 		for i := 0; i < len(inReal); i++ {
 			tempReal := tempBuffer2[i]
-			tempReal2 := outRealMiddleBand[i]
-			outRealUpperBand[i] = tempReal2 + (tempReal * inNbDevUp)
-			outRealLowerBand[i] = tempReal2 - (tempReal * inNbDevDn)
+			tempReal2 := out.Middle[i]
+			out.Upper[i] = tempReal2 + (tempReal * inNbDevUp)
+			out.Lower[i] = tempReal2 - (tempReal * inNbDevDn)
 		}
 	}
-	return outRealUpperBand, outRealMiddleBand, outRealLowerBand
+}
+
+type BBAndsOut struct {
+	Lower  []float64
+	Middle []float64
+	Upper  []float64
 }
 
 // Dema - Double Exponential Moving Average
-func Dema(inReal []float64, inTimePeriod int) []float64 {
+func Dema(inReal []float64, inTimePeriod int, fEma, sEma, outReal []float64) {
 
-	outReal := make([]float64, len(inReal))
-	firstEMA := Ema(inReal, inTimePeriod)
-	secondEMA := Ema(firstEMA[inTimePeriod-1:], inTimePeriod)
+	Ema(inReal, inTimePeriod, fEma)
+	Ema(fEma[inTimePeriod-1:], inTimePeriod, sEma)
 
 	for outIdx, secondEMAIdx := (inTimePeriod*2)-2, inTimePeriod-1; outIdx < len(inReal); outIdx, secondEMAIdx = outIdx+1, secondEMAIdx+1 {
-		outReal[outIdx] = (2.0 * firstEMA[outIdx]) - secondEMA[secondEMAIdx]
+		outReal[outIdx] = (2.0 * fEma[outIdx]) - sEma[secondEMAIdx]
 	}
-
-	return outReal
 }
 
 // Ema - Exponential Moving Average
-func ema(inReal []float64, inTimePeriod int, k1 float64) []float64 {
-
-	outReal := make([]float64, len(inReal))
+func ema(inReal []float64, inTimePeriod int, k1 float64, outReal []float64) {
 
 	lookbackTotal := inTimePeriod - 1
 	startIdx := lookbackTotal
@@ -127,16 +132,13 @@ func ema(inReal []float64, inTimePeriod int, k1 float64) []float64 {
 		today++
 		outIdx++
 	}
-
-	return outReal
 }
 
 // Ema - Exponential Moving Average
-func Ema(inReal []float64, inTimePeriod int) []float64 {
+func Ema(inReal []float64, inTimePeriod int, outReal []float64) {
 
 	k := 2.0 / float64(inTimePeriod+1)
-	outReal := ema(inReal, inTimePeriod, k)
-	return outReal
+	ema(inReal, inTimePeriod, k, outReal)
 }
 
 // HtTrendline - Hilbert Transform - Instantaneous Trendline (lookback=63)
@@ -377,9 +379,7 @@ func HtTrendline(inReal []float64) []float64 {
 }
 
 // Kama - Kaufman Adaptive Moving Average
-func Kama(inReal []float64, inTimePeriod int) []float64 {
-
-	outReal := make([]float64, len(inReal))
+func Kama(inReal []float64, inTimePeriod int, outReal []float64) {
 
 	constMax := 2.0 / (30.0 + 1.0)
 	constDiff := 2.0/(2.0+1.0) - constMax
@@ -451,48 +451,35 @@ func Kama(inReal []float64, inTimePeriod int) []float64 {
 		outReal[outIdx] = prevKAMA
 		outIdx++
 	}
-
-	return outReal
 }
 
 // Ma - Moving average
-func Ma(inReal []float64, inTimePeriod int, inMAType MaType) []float64 {
-
-	outReal := make([]float64, len(inReal))
+func Ma(inReal []float64, inTimePeriod int, inMAType MaType, outReal []float64) {
 
 	if inTimePeriod == 1 {
 		copy(outReal, inReal)
-		return outReal
 	}
 
 	switch inMAType {
 	case SMA:
-		outReal = Sma(inReal, inTimePeriod)
+		Sma(inReal, inTimePeriod, outReal)
 	case EMA:
-		outReal = Ema(inReal, inTimePeriod)
+		Ema(inReal, inTimePeriod, outReal)
 	case WMA:
-		outReal = Wma(inReal, inTimePeriod)
-	case DEMA:
-		outReal = Dema(inReal, inTimePeriod)
-	case TEMA:
-		outReal = Tema(inReal, inTimePeriod)
+		Wma(inReal, inTimePeriod, outReal)
 	case TRIMA:
-		outReal = Trima(inReal, inTimePeriod)
+		Trima(inReal, inTimePeriod, outReal)
 	case KAMA:
-		outReal = Kama(inReal, inTimePeriod)
-	case MAMA:
-		outReal, _ = Mama(inReal, 0.5, 0.05)
+		Kama(inReal, inTimePeriod, outReal)
 	case T3MA:
-		outReal = T3(inReal, inTimePeriod, 0.7)
+		T3(inReal, inTimePeriod, 0.7, outReal)
+	default:
+		panic(fmt.Errorf("unknown option: %v", inMAType))
 	}
-	return outReal
 }
 
 // Mama - MESA Adaptive Moving Average (lookback=32)
-func Mama(inReal []float64, inFastLimit float64, inSlowLimit float64) ([]float64, []float64) {
-
-	outMAMA := make([]float64, len(inReal))
-	outFAMA := make([]float64, len(inReal))
+func Mama(inReal []float64, inFastLimit float64, inSlowLimit float64, outMama, outFama []float64) {
 
 	a := 0.0962
 	b := 0.5769
@@ -733,8 +720,8 @@ func Mama(inReal []float64, inFastLimit float64, inSlowLimit float64) ([]float64
 		tempReal *= 0.5
 		fama = (tempReal * mama) + ((1 - tempReal) * fama)
 		if today >= startIdx {
-			outMAMA[outIdx] = mama
-			outFAMA[outIdx] = fama
+			outMama[outIdx] = mama
+			outFama[outIdx] = fama
 			outIdx++
 		}
 		Re = (0.2 * ((i2 * previ2) + (q2 * prevq2))) + (0.8 * Re)
@@ -761,13 +748,11 @@ func Mama(inReal []float64, inFastLimit float64, inSlowLimit float64) ([]float64
 		period = (0.2 * period) + (0.8 * tempReal)
 		today++
 	}
-	return outMAMA, outFAMA
 }
 
 // MaVp - Moving average with variable period
-func MaVp(inReal []float64, inPeriods []float64, inMinPeriod int, inMaxPeriod int, inMAType MaType) []float64 {
+func MaVp(inReal []float64, inPeriods []float64, inMinPeriod int, inMaxPeriod int, inMAType MaType, outReal []float64) {
 
-	outReal := make([]float64, len(inReal))
 	startIdx := inMaxPeriod - 1
 	outputSize := len(inReal)
 
@@ -785,7 +770,8 @@ func MaVp(inReal []float64, inPeriods []float64, inMinPeriod int, inMaxPeriod in
 	for i := startIdx; i < outputSize; i++ {
 		curPeriod := int(localPeriodArray[i])
 		if curPeriod != 0 {
-			localOutputArray := Ma(inReal, curPeriod, inMAType)
+			localOutputArray := make([]float64, len(outReal), len(outReal))
+			Ma(inReal, curPeriod, inMAType, localOutputArray)
 			outReal[i] = localOutputArray[i]
 			for j := i + 1; j < outputSize; j++ {
 				if localPeriodArray[j] == float64(curPeriod) {
@@ -795,7 +781,6 @@ func MaVp(inReal []float64, inPeriods []float64, inMinPeriod int, inMaxPeriod in
 			}
 		}
 	}
-	return outReal
 }
 
 // MidPoint - MidPoint over period
@@ -1145,9 +1130,7 @@ func SarExt(inHigh []float64, inLow []float64,
 }
 
 // Sma - Simple Moving Average
-func Sma(inReal []float64, inTimePeriod int) []float64 {
-
-	outReal := make([]float64, len(inReal))
+func Sma(inReal []float64, inTimePeriod int, outReal []float64) {
 
 	lookbackTotal := inTimePeriod - 1
 	startIdx := lookbackTotal
@@ -1171,14 +1154,10 @@ func Sma(inReal []float64, inTimePeriod int) []float64 {
 		outIdx++
 		ok = i < len(outReal)
 	}
-
-	return outReal
 }
 
 // T3 - Triple Exponential Moving Average (T3) (lookback=6*inTimePeriod)
-func T3(inReal []float64, inTimePeriod int, inVFactor float64) []float64 {
-
-	outReal := make([]float64, len(inReal))
+func T3(inReal []float64, inTimePeriod int, inVFactor float64, outReal []float64) {
 
 	lookbackTotal := 6 * (inTimePeriod - 1)
 	startIdx := lookbackTotal
@@ -1265,36 +1244,29 @@ func T3(inReal []float64, inTimePeriod int, inVFactor float64) []float64 {
 		outIdx++
 		today++
 	}
-
-	return outReal
 }
 
 // Tema - Triple Exponential Moving Average
-func Tema(inReal []float64, inTimePeriod int) []float64 {
+func Tema(inReal []float64, inTimePeriod int, fEma, sEma, tEma, outReal []float64) {
 
-	outReal := make([]float64, len(inReal))
-	firstEMA := Ema(inReal, inTimePeriod)
-	secondEMA := Ema(firstEMA[inTimePeriod-1:], inTimePeriod)
-	thirdEMA := Ema(secondEMA[inTimePeriod-1:], inTimePeriod)
+	Ema(inReal, inTimePeriod, fEma)
+	Ema(fEma[inTimePeriod-1:], inTimePeriod, sEma)
+	Ema(sEma[inTimePeriod-1:], inTimePeriod, tEma)
 
 	outIdx := (inTimePeriod * 3) - 3
 	secondEMAIdx := (inTimePeriod * 2) - 2
 	thirdEMAIdx := inTimePeriod - 1
 
 	for outIdx < len(inReal) {
-		outReal[outIdx] = thirdEMA[thirdEMAIdx] + ((3.0 * firstEMA[outIdx]) - (3.0 * secondEMA[secondEMAIdx]))
+		outReal[outIdx] = tEma[thirdEMAIdx] + ((3.0 * fEma[outIdx]) - (3.0 * sEma[secondEMAIdx]))
 		outIdx++
 		secondEMAIdx++
 		thirdEMAIdx++
 	}
-
-	return outReal
 }
 
 // Trima - Triangular Moving Average
-func Trima(inReal []float64, inTimePeriod int) []float64 {
-
-	outReal := make([]float64, len(inReal))
+func Trima(inReal []float64, inTimePeriod int, outReal []float64) {
 
 	lookbackTotal := inTimePeriod - 1
 	startIdx := lookbackTotal
@@ -1393,20 +1365,16 @@ func Trima(inReal []float64, inTimePeriod int) []float64 {
 			outIdx++
 		}
 	}
-	return outReal
 }
 
 // Wma - Weighted Moving Average
-func Wma(inReal []float64, inTimePeriod int) []float64 {
-
-	outReal := make([]float64, len(inReal))
+func Wma(inReal []float64, inTimePeriod int, outReal []float64) {
 
 	lookbackTotal := inTimePeriod - 1
 	startIdx := lookbackTotal
 
 	if inTimePeriod == 1 {
 		copy(outReal, inReal)
-		return outReal
 	}
 	divider := (inTimePeriod * (inTimePeriod + 1)) >> 1
 	outIdx := inTimePeriod - 1
@@ -1434,7 +1402,6 @@ func Wma(inReal []float64, inTimePeriod int) []float64 {
 		trailingIdx++
 		outIdx++
 	}
-	return outReal
 }
 
 /* Momentum Indicators */
@@ -1580,18 +1547,20 @@ func AdxR(inHigh []float64, inLow []float64, inClose []float64, inTimePeriod int
 }
 
 // Apo - Absolute Price Oscillator
-func Apo(inReal []float64, inFastPeriod int, inSlowPeriod int, inMAType MaType) []float64 {
+func Apo(inReal []float64, inFastPeriod int, inSlowPeriod int, inMAType MaType, buff *ApoBuffer, outReal []float64) {
 
 	if inSlowPeriod < inFastPeriod {
 		inSlowPeriod, inFastPeriod = inFastPeriod, inSlowPeriod
 	}
-	tempBuffer := Ma(inReal, inFastPeriod, inMAType)
-	outReal := Ma(inReal, inSlowPeriod, inMAType)
+	Ma(inReal, inFastPeriod, inMAType, buff.tempBuffer)
+	Ma(inReal, inSlowPeriod, inMAType, outReal)
 	for i := inSlowPeriod - 1; i < len(inReal); i++ {
-		outReal[i] = tempBuffer[i] - outReal[i]
+		outReal[i] = buff.tempBuffer[i] - outReal[i]
 	}
+}
 
-	return outReal
+type ApoBuffer struct {
+	tempBuffer []float64
 }
 
 // Aroon - Aroon
@@ -1870,9 +1839,7 @@ func Cci(inHigh []float64, inLow []float64, inClose []float64, inTimePeriod int)
 }
 
 // Dx - Directional Movement Index
-func Dx(inHigh []float64, inLow []float64, inClose []float64, inTimePeriod int) []float64 {
-
-	outReal := make([]float64, len(inClose))
+func Dx(inHigh []float64, inLow []float64, inClose []float64, inTimePeriod int, outReal []float64) {
 
 	lookbackTotal := 2
 	if inTimePeriod > 1 {
@@ -1971,12 +1938,11 @@ func Dx(inHigh []float64, inLow []float64, inClose []float64, inTimePeriod int) 
 		}
 		outIdx++
 	}
-	return outReal
 }
 
 // Macd - Moving Average Convergence/Divergence
 // unstable period ~= 100
-func Macd(inReal []float64, inFastPeriod int, inSlowPeriod int, inSignalPeriod int) ([]float64, []float64, []float64) {
+func Macd(inReal []float64, inFastPeriod int, inSlowPeriod int, inSignalPeriod int, buf *MacdBuffer, out *MacdOut) {
 
 	if inSlowPeriod < inFastPeriod {
 		inSlowPeriod, inFastPeriod = inFastPeriod, inSlowPeriod
@@ -2001,64 +1967,74 @@ func Macd(inReal []float64, inFastPeriod int, inSlowPeriod int, inSignalPeriod i
 	lookbackTotal := lookbackSignal
 	lookbackTotal += (inSlowPeriod - 1)
 
-	fastEMABuffer := ema(inReal, inFastPeriod, k2)
-	slowEMABuffer := ema(inReal, inSlowPeriod, k1)
-	for i := 0; i < len(fastEMABuffer); i++ {
-		fastEMABuffer[i] = fastEMABuffer[i] - slowEMABuffer[i]
+	ema(inReal, inFastPeriod, k2, buf.fastEmaBuffer)
+	ema(inReal, inSlowPeriod, k1, buf.slowEmaBuffer)
+	for i := 0; i < len(buf.fastEmaBuffer); i++ {
+		buf.fastEmaBuffer[i] = buf.fastEmaBuffer[i] - buf.slowEmaBuffer[i]
 	}
 
-	outMACD := make([]float64, len(inReal))
-	for i := lookbackTotal - 1; i < len(fastEMABuffer); i++ {
-		outMACD[i] = fastEMABuffer[i]
+	for i := lookbackTotal - 1; i < len(buf.fastEmaBuffer); i++ {
+		out.MACD[i] = buf.fastEmaBuffer[i]
 	}
-	outMACDSignal := ema(outMACD, inSignalPeriod, (2.0 / float64(inSignalPeriod+1)))
+	ema(out.MACD, inSignalPeriod, (2.0 / float64(inSignalPeriod+1)), out.MACDSignal)
 
 	outMACDHist := make([]float64, len(inReal))
 	for i := lookbackTotal; i < len(outMACDHist); i++ {
-		outMACDHist[i] = outMACD[i] - outMACDSignal[i]
+		outMACDHist[i] = out.MACD[i] - out.MACDSignal[i]
 	}
+}
 
-	return outMACD, outMACDSignal, outMACDHist
+type MacdBuffer struct {
+	fastEmaBuffer []float64
+	slowEmaBuffer []float64
+}
+
+type MacdOut struct {
+	MACD          []float64
+	MACDSignal    []float64
+	MACDHistogram []float64
 }
 
 // MacdExt - MACD with controllable MA type
 // unstable period ~= 100
 func MacdExt(inReal []float64, inFastPeriod int, inFastMAType MaType, inSlowPeriod int, inSlowMAType MaType, inSignalPeriod int, inSignalMAType MaType) ([]float64, []float64, []float64) {
-
-	lookbackLargest := 0
-	if inFastPeriod < inSlowPeriod {
-		lookbackLargest = inSlowPeriod
-	} else {
-		lookbackLargest = inFastPeriod
-	}
-	lookbackTotal := (inSignalPeriod - 1) + (lookbackLargest - 1)
-
-	outMACD := make([]float64, len(inReal))
-	outMACDSignal := make([]float64, len(inReal))
-	outMACDHist := make([]float64, len(inReal))
-
-	slowMABuffer := Ma(inReal, inSlowPeriod, inSlowMAType)
-	fastMABuffer := Ma(inReal, inFastPeriod, inFastMAType)
-	tempBuffer1 := make([]float64, len(inReal))
-
-	for i := 0; i < len(slowMABuffer); i++ {
-		tempBuffer1[i] = fastMABuffer[i] - slowMABuffer[i]
-	}
-	tempBuffer2 := Ma(tempBuffer1, inSignalPeriod, inSignalMAType)
-
-	for i := lookbackTotal; i < len(outMACDHist); i++ {
-		outMACD[i] = tempBuffer1[i]
-		outMACDSignal[i] = tempBuffer2[i]
-		outMACDHist[i] = outMACD[i] - outMACDSignal[i]
-	}
-
-	return outMACD, outMACDSignal, outMACDHist
+	panic("not implemented")
+	//
+	//lookbackLargest := 0
+	//if inFastPeriod < inSlowPeriod {
+	//	lookbackLargest = inSlowPeriod
+	//} else {
+	//	lookbackLargest = inFastPeriod
+	//}
+	//lookbackTotal := (inSignalPeriod - 1) + (lookbackLargest - 1)
+	//
+	//outMACD := make([]float64, len(inReal))
+	//outMACDSignal := make([]float64, len(inReal))
+	//outMACDHist := make([]float64, len(inReal))
+	//
+	//slowMABuffer := Ma(inReal, inSlowPeriod, inSlowMAType)
+	//fastMABuffer := Ma(inReal, inFastPeriod, inFastMAType)
+	//tempBuffer1 := make([]float64, len(inReal))
+	//
+	//for i := 0; i < len(slowMABuffer); i++ {
+	//	tempBuffer1[i] = fastMABuffer[i] - slowMABuffer[i]
+	//}
+	//tempBuffer2 := Ma(tempBuffer1, inSignalPeriod, inSignalMAType)
+	//
+	//for i := lookbackTotal; i < len(outMACDHist); i++ {
+	//	outMACD[i] = tempBuffer1[i]
+	//	outMACDSignal[i] = tempBuffer2[i]
+	//	outMACDHist[i] = outMACD[i] - outMACDSignal[i]
+	//}
+	//
+	//return outMACD, outMACDSignal, outMACDHist
 }
 
 // MacdFix - MACD Fix 12/26
 // unstable period ~= 100
 func MacdFix(inReal []float64, inSignalPeriod int) ([]float64, []float64, []float64) {
-	return Macd(inReal, 0, 0, inSignalPeriod)
+	panic("not implemented")
+	//return Macd(inReal, 0, 0, inSignalPeriod)
 }
 
 // MinusDI - Minus Directional Indicator
@@ -2590,9 +2566,7 @@ func PlusDI(inHigh []float64, inLow []float64, inClose []float64, inTimePeriod i
 }
 
 // PlusDM - Plus Directional Movement
-func PlusDM(inHigh []float64, inLow []float64, inTimePeriod int) []float64 {
-
-	outReal := make([]float64, len(inHigh))
+func PlusDM(inHigh []float64, inLow []float64, inTimePeriod int, outReal []float64) {
 
 	lookbackTotal := 1
 	if inTimePeriod > 1 {
@@ -2622,7 +2596,7 @@ func PlusDM(inHigh []float64, inLow []float64, inTimePeriod int) []float64 {
 			}
 			outIdx++
 		}
-		return outReal
+		return
 	}
 	prevPlusDM := 0.0
 	today = startIdx - lookbackTotal
@@ -2676,28 +2650,29 @@ func PlusDM(inHigh []float64, inLow []float64, inTimePeriod int) []float64 {
 		outReal[outIdx] = prevPlusDM
 		outIdx++
 	}
-	return outReal
 }
 
 // Ppo - Percentage Price Oscillator
-func Ppo(inReal []float64, inFastPeriod int, inSlowPeriod int, inMAType MaType) []float64 {
+func Ppo(inReal []float64, inFastPeriod int, inSlowPeriod int, inMAType MaType, buf *PpoBuffer, outReal []float64) {
 
 	if inSlowPeriod < inFastPeriod {
 		inSlowPeriod, inFastPeriod = inFastPeriod, inSlowPeriod
 	}
-	tempBuffer := Ma(inReal, inFastPeriod, inMAType)
-	outReal := Ma(inReal, inSlowPeriod, inMAType)
+	Ma(inReal, inFastPeriod, inMAType, buf.tempBuffer)
+	Ma(inReal, inSlowPeriod, inMAType, outReal)
 
 	for i := inSlowPeriod - 1; i < len(inReal); i++ {
 		tempReal := outReal[i]
 		if !(((-(0.00000000000001)) < tempReal) && (tempReal < (0.00000000000001))) {
-			outReal[i] = ((tempBuffer[i] - tempReal) / tempReal) * 100.0
+			outReal[i] = ((buf.tempBuffer[i] - tempReal) / tempReal) * 100.0
 		} else {
 			outReal[i] = 0.0
 		}
 	}
+}
 
-	return outReal
+type PpoBuffer struct {
+	tempBuffer []float64
 }
 
 // Rocp - Rate of change Percentage: (price-prevPrice)/prevPrice
@@ -2729,9 +2704,7 @@ func Rocp(inReal []float64, inTimePeriod int) []float64 {
 }
 
 // Roc - Rate of change : ((price/prevPrice)-1)*100
-func Roc(inReal []float64, inTimePeriod int) []float64 {
-
-	outReal := make([]float64, len(inReal))
+func Roc(inReal []float64, inTimePeriod int, outReal []float64) {
 
 	startIdx := inTimePeriod
 	outIdx := inTimePeriod
@@ -2749,7 +2722,6 @@ func Roc(inReal []float64, inTimePeriod int) []float64 {
 		outIdx++
 		inIdx++
 	}
-	return outReal
 }
 
 // Rocr - Rate of change ratio: (price/prevPrice)
@@ -2891,10 +2863,7 @@ func Rsi(inReal []float64, inTimePeriod int) []float64 {
 }
 
 // Stoch - Stochastic
-func Stoch(inHigh []float64, inLow []float64, inClose []float64, inFastKPeriod int, inSlowKPeriod int, inSlowKMAType MaType, inSlowDPeriod int, inSlowDMAType MaType) ([]float64, []float64) {
-
-	outSlowK := make([]float64, len(inClose))
-	outSlowD := make([]float64, len(inClose))
+func Stoch(inHigh []float64, inLow []float64, inClose []float64, inFastKPeriod int, inSlowKPeriod int, inSlowKMAType MaType, inSlowDPeriod int, inSlowDMAType MaType, buf *StochBuffer, out *StochOut) {
 
 	lookbackK := inFastKPeriod - 1
 	lookbackKSlow := inSlowKPeriod - 1
@@ -2906,7 +2875,12 @@ func Stoch(inHigh []float64, inLow []float64, inClose []float64, inFastKPeriod i
 	today := trailingIdx + lookbackK
 	lowestIdx, highestIdx := -1, -1
 	diff, highest, lowest := 0.0, 0.0, 0.0
-	tempBuffer := make([]float64, len(inClose)-today+1)
+	if len(buf.tempBuffer) != len(inClose)-today+1 {
+		buf.tempBuffer = make([]float64, len(inClose)-today+1)
+		buf.tempBuffer1 = make([]float64, len(inClose)-today+1)
+		buf.tempBuffer2 = make([]float64, len(inClose)-today+1)
+	}
+
 	for today < len(inClose) {
 		tmp := inLow[today]
 		if lowestIdx < trailingIdx {
@@ -2948,31 +2922,39 @@ func Stoch(inHigh []float64, inLow []float64, inClose []float64, inFastKPeriod i
 			diff = (highest - lowest) / 100.0
 		}
 		if diff != 0.0 {
-			tempBuffer[outIdx] = (inClose[today] - lowest) / diff
+			buf.tempBuffer[outIdx] = (inClose[today] - lowest) / diff
 		} else {
-			tempBuffer[outIdx] = 0.0
+			buf.tempBuffer[outIdx] = 0.0
 		}
 		outIdx++
 		trailingIdx++
 		today++
 	}
 
-	tempBuffer1 := Ma(tempBuffer, inSlowKPeriod, inSlowKMAType)
-	tempBuffer2 := Ma(tempBuffer1, inSlowDPeriod, inSlowDMAType)
+	panic("fix")
+	Ma(buf.tempBuffer, inSlowKPeriod, inSlowKMAType, buf.tempBuffer1)
+	Ma(buf.tempBuffer1, inSlowDPeriod, inSlowDMAType, buf.tempBuffer2)
 	//for i, j := lookbackK, lookbackTotal; j < len(inClose); i, j = i+1, j+1 {
 	for i, j := lookbackDSlow+lookbackKSlow, lookbackTotal; j < len(inClose); i, j = i+1, j+1 {
-		outSlowK[j] = tempBuffer1[i]
-		outSlowD[j] = tempBuffer2[i]
+		out.SlowK[j] = buf.tempBuffer1[i]
+		out.SlowD[j] = buf.tempBuffer2[i]
 	}
 
-	return outSlowK, outSlowD
+}
+
+type StochOut struct {
+	SlowK []float64
+	SlowD []float64
+}
+
+type StochBuffer struct {
+	tempBuffer  []float64
+	tempBuffer1 []float64
+	tempBuffer2 []float64
 }
 
 // StochF - Stochastic Fast
-func StochF(inHigh []float64, inLow []float64, inClose []float64, inFastKPeriod int, inFastDPeriod int, inFastDMAType MaType) ([]float64, []float64) {
-
-	outFastK := make([]float64, len(inClose))
-	outFastD := make([]float64, len(inClose))
+func StochF(inHigh []float64, inLow []float64, inClose []float64, inFastKPeriod int, inFastDPeriod int, inFastDMAType MaType, buf *StochFastBuffer, out *StochFastOut) {
 
 	lookbackK := inFastKPeriod - 1
 	lookbackFastD := inFastDPeriod - 1
@@ -2983,7 +2965,10 @@ func StochF(inHigh []float64, inLow []float64, inClose []float64, inFastKPeriod 
 	today := trailingIdx + lookbackK
 	lowestIdx, highestIdx := -1, -1
 	diff, highest, lowest := 0.0, 0.0, 0.0
-	tempBuffer := make([]float64, (len(inClose) - today + 1))
+	if len(buf.tempBuffer) != len(inClose)-today+1 {
+		buf.tempBuffer = make([]float64, len(inClose)-today+1)
+		buf.tempBuffer1 = make([]float64, len(inClose)-today+1)
+	}
 
 	for today < len(inClose) {
 		tmp := inLow[today]
@@ -3027,59 +3012,74 @@ func StochF(inHigh []float64, inLow []float64, inClose []float64, inFastKPeriod 
 			diff = (highest - lowest) / 100.0
 		}
 		if diff != 0.0 {
-			tempBuffer[outIdx] = (inClose[today] - lowest) / diff
+			buf.tempBuffer[outIdx] = (inClose[today] - lowest) / diff
 
 		} else {
-			tempBuffer[outIdx] = 0.0
+			buf.tempBuffer[outIdx] = 0.0
 		}
 		outIdx++
 		trailingIdx++
 		today++
 	}
 
-	tempBuffer1 := Ma(tempBuffer, inFastDPeriod, inFastDMAType)
+	Ma(buf.tempBuffer, inFastDPeriod, inFastDMAType, buf.tempBuffer1)
 	for i, j := lookbackFastD, lookbackTotal; j < len(inClose); i, j = i+1, j+1 {
-		outFastK[j] = tempBuffer[i]
-		outFastD[j] = tempBuffer1[i]
+		out.FastK[j] = buf.tempBuffer[i]
+		out.FastD[j] = buf.tempBuffer1[i]
 	}
+}
 
-	return outFastK, outFastD
+type StochFastOut struct {
+	FastK []float64
+	FastD []float64
+}
+
+type StochFastBuffer struct {
+	tempBuffer  []float64
+	tempBuffer1 []float64
 }
 
 // StochRsi - Stochastic Relative Strength Index
-func StochRsi(inReal []float64, inTimePeriod int, inFastKPeriod int, inFastDPeriod int, inFastDMAType MaType) ([]float64, []float64) {
-
-	outFastK := make([]float64, len(inReal))
-	outFastD := make([]float64, len(inReal))
+func StochRsi(inReal []float64, inTimePeriod int, inFastKPeriod int, inFastDPeriod int, inFastDMAType MaType, buf *StochRsiBuffer, out *StochRsiOut) {
 
 	lookbackSTOCHF := (inFastKPeriod - 1) + (inFastDPeriod - 1)
 	lookbackTotal := inTimePeriod + lookbackSTOCHF
 	startIdx := lookbackTotal
 	tempRSIBuffer := Rsi(inReal, inTimePeriod)
-	tempk, tempd := StochF(tempRSIBuffer, tempRSIBuffer, tempRSIBuffer, inFastKPeriod, inFastDPeriod, inFastDMAType)
+	//tempk, tempd := StochF(tempRSIBuffer, tempRSIBuffer, tempRSIBuffer, inFastKPeriod, inFastDPeriod, inFastDMAType)
+	StochF(tempRSIBuffer, tempRSIBuffer, tempRSIBuffer, inFastKPeriod, inFastDPeriod, inFastDMAType, buf.stochFastBuffer, buf.stochFastOut)
 
 	for i := startIdx; i < len(inReal); i++ {
-		outFastK[i] = tempk[i]
-		outFastD[i] = tempd[i]
+		out.FastK[i] = buf.stochFastOut.FastK[i]
+		out.FastD[i] = buf.stochFastOut.FastD[i]
 	}
+}
 
-	return outFastK, outFastD
+type StochRsiOut struct {
+	FastK []float64
+	FastD []float64
+}
+
+type StochRsiBuffer struct {
+	stochFastOut    *StochFastOut
+	stochFastBuffer *StochFastBuffer
 }
 
 //Trix - 1-day Rate-Of-Change (ROC) of a Triple Smooth EMA
-func Trix(inReal []float64, inTimePeriod int) []float64 {
+func Trix(inReal []float64, inTimePeriod int, buf *TrixBuffer, outReal []float64) {
 
-	tmpReal := Ema(inReal, inTimePeriod)
-	tmpReal = Ema(tmpReal[inTimePeriod-1:], inTimePeriod)
-	tmpReal = Ema(tmpReal[inTimePeriod-1:], inTimePeriod)
-	tmpReal = Roc(tmpReal, 1)
+	Ema(inReal, inTimePeriod, buf.tmpReal)
+	Ema(buf.tmpReal[inTimePeriod-1:], inTimePeriod, buf.tmpReal)
+	Ema(buf.tmpReal[inTimePeriod-1:], inTimePeriod, buf.tmpReal)
+	Roc(buf.tmpReal, 1, buf.tmpReal)
 
-	outReal := make([]float64, len(inReal))
 	for i, j := inTimePeriod, ((inTimePeriod-1)*3)+1; j < len(outReal); i, j = i+1, j+1 {
-		outReal[j] = tmpReal[i]
+		outReal[j] = buf.tmpReal[i]
 	}
+}
 
-	return outReal
+type TrixBuffer struct {
+	tmpReal []float64
 }
 
 // UltOsc - Ultimate Oscillator
@@ -3519,59 +3519,62 @@ func Obv(inReal []float64, inVolume []float64) []float64 {
 /* Volatility Indicators */
 
 // Atr - Average True Range
-func Atr(inHigh []float64, inLow []float64, inClose []float64, inTimePeriod int) []float64 {
-
-	outReal := make([]float64, len(inClose))
+func Atr(inHigh []float64, inLow []float64, inClose []float64, inTimePeriod int, buf *AtrBuffer, outReal []float64) {
 
 	inTimePeriodF := float64(inTimePeriod)
 
 	if inTimePeriod < 1 {
-		return outReal
+		return
 	}
 
 	if inTimePeriod <= 1 {
-		return TRange(inHigh, inLow, inClose)
+		TRange(inHigh, inLow, inClose, outReal)
+		return
 	}
 
 	outIdx := inTimePeriod
 	today := inTimePeriod + 1
 
-	tr := TRange(inHigh, inLow, inClose)
-	prevATRTemp := Sma(tr, inTimePeriod)
-	prevATR := prevATRTemp[inTimePeriod]
+	TRange(inHigh, inLow, inClose, buf.tr)
+	Sma(buf.tr, inTimePeriod, buf.prevATRTemp)
+	prevATR := buf.prevATRTemp[inTimePeriod]
 	outReal[inTimePeriod] = prevATR
 
 	for outIdx = inTimePeriod + 1; outIdx < len(inClose); outIdx++ {
 		prevATR *= inTimePeriodF - 1.0
-		prevATR += tr[today]
+		prevATR += buf.tr[today]
 		prevATR /= inTimePeriodF
 		outReal[outIdx] = prevATR
 		today++
 	}
 
-	return outReal
+	return
+}
+
+type AtrBuffer struct {
+	tr          []float64
+	prevATRTemp []float64
 }
 
 // Natr - Normalized Average True Range
-func Natr(inHigh []float64, inLow []float64, inClose []float64, inTimePeriod int) []float64 {
-
-	outReal := make([]float64, len(inClose))
+func Natr(inHigh []float64, inLow []float64, inClose []float64, inTimePeriod int, buf *NatrBuffer, outReal []float64) {
 
 	if inTimePeriod < 1 {
-		return outReal
+		return
 	}
 
 	if inTimePeriod <= 1 {
-		return TRange(inHigh, inLow, inClose)
+		TRange(inHigh, inLow, inClose, outReal)
+		return
 	}
 
 	inTimePeriodF := float64(inTimePeriod)
 	outIdx := inTimePeriod
 	today := inTimePeriod
 
-	tr := TRange(inHigh, inLow, inClose)
-	prevATRTemp := Sma(tr, inTimePeriod)
-	prevATR := prevATRTemp[inTimePeriod]
+	TRange(inHigh, inLow, inClose, buf.tr)
+	Sma(buf.tr, inTimePeriod, buf.prevATRTemp)
+	prevATR := buf.prevATRTemp[inTimePeriod]
 
 	tempValue := inClose[today]
 	if tempValue != 0.0 {
@@ -3583,7 +3586,7 @@ func Natr(inHigh []float64, inLow []float64, inClose []float64, inTimePeriod int
 	for outIdx = inTimePeriod + 1; outIdx < len(inClose); outIdx++ {
 		today++
 		prevATR *= inTimePeriodF - 1.0
-		prevATR += tr[today]
+		prevATR += buf.tr[today]
 		prevATR /= inTimePeriodF
 		tempValue = inClose[today]
 		if tempValue != 0.0 {
@@ -3592,14 +3595,15 @@ func Natr(inHigh []float64, inLow []float64, inClose []float64, inTimePeriod int
 			outReal[0] = 0.0
 		}
 	}
+}
 
-	return outReal
+type NatrBuffer struct {
+	tr          []float64
+	prevATRTemp []float64
 }
 
 // TRange - True Range
-func TRange(inHigh []float64, inLow []float64, inClose []float64) []float64 {
-
-	outReal := make([]float64, len(inClose))
+func TRange(inHigh []float64, inLow []float64, inClose []float64, outReal []float64) {
 
 	startIdx := 1
 	outIdx := startIdx
@@ -3621,8 +3625,6 @@ func TRange(inHigh []float64, inLow []float64, inClose []float64) []float64 {
 		outIdx++
 		today++
 	}
-
-	return outReal
 }
 
 /* Price Transform */
